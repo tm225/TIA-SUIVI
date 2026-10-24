@@ -2,7 +2,8 @@ name: Construire l'APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+permissions:
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -15,6 +16,18 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Clé de signature (créée une seule fois, puis conservée dans le dépôt)
+        run: |
+          mkdir -p signing ~/.android
+          if [ ! -f signing/debug.keystore ]; then
+            keytool -genkey -keystore signing/debug.keystore -storetype JKS -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=TIA Suivi,O=MARIUS TIA,C=CI"
+            git config user.name github-actions
+            git config user.email actions@github.com
+            git add signing/debug.keystore
+            git commit -m "Cle de signature de l'application"
+            git push
+          fi
+          cp signing/debug.keystore ~/.android/debug.keystore
       - name: Préparer le projet Android
         run: |
           npm init -y
@@ -22,8 +35,9 @@ jobs:
           mkdir www
           cp index.html www/
           cp node_modules/exceljs/dist/exceljs.min.js node_modules/jszip/dist/jszip.min.js www/
-          echo '{"appId":"ci.rsu.suivi","appName":"TIA Suivi","webDir":"www"}' > capacitor.config.json
+          echo '{"appId":"ci.tia.suivi","appName":"TIA Suivi","webDir":"www"}' > capacitor.config.json
           npx cap add android
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
           npx cap sync android
       - name: Compiler l'APK
         run: |
@@ -32,5 +46,5 @@ jobs:
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: Suivi-RSU-apk
+          name: TIA-Suivi-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
